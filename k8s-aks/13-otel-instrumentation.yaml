@@ -47,6 +47,8 @@ spec:
   # ── Java (Spring Boot) ──────────────────────────────────────────────────────
   # El Operator inyecta el agente Java automáticamente vía init-container.
   # El agente usa HTTP/protobuf con endpoint 4318 por defecto.
+  # Cubre transaction-service, auth-service y api-gateway (migrados desde Node.js
+  # para tener soporte "Stable" de Logs en OpenTelemetry — ver docs/languages).
   java:
     env:
       - name: OTEL_LOGS_EXPORTER
@@ -55,18 +57,9 @@ spec:
         value: otlp
       - name: OTEL_TRACES_EXPORTER
         value: otlp
-
-  # ── Node.js ─────────────────────────────────────────────────────────────────
-  # Por defecto Node.js usa gRPC (4317). Forzamos HTTP/protobuf para
-  # usar el mismo endpoint 4318 que el resto.
-  nodejs:
-    env:
-      - name: OTEL_EXPORTER_OTLP_PROTOCOL
-        value: http/protobuf
-      - name: OTEL_NODE_DISABLED_INSTRUMENTATIONS
-        value: "fs"   # demasiado ruidoso
-      - name: OTEL_LOGS_EXPORTER
-        value: otlp
+      # DEBUG TEMPORAL — quitar después de validar (muy verboso):
+      # - name: OTEL_JAVAAGENT_DEBUG
+      #   value: "true"
 
   # ── Python (FastAPI) ────────────────────────────────────────────────────────
   # Python usa HTTP/protobuf con 4318 por defecto.
@@ -76,3 +69,6 @@ spec:
         value: "true"
       - name: OTEL_LOGS_EXPORTER
         value: otlp
+      # DEBUG TEMPORAL — quitar después de validar (muy verboso):
+      # - name: OTEL_LOG_LEVEL
+      #   value: debug

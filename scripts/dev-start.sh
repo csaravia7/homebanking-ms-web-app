@@ -54,13 +54,12 @@ wait_for() {
   echo ""; ok "$name is ready"
 }
 
-# ── Auth Service (Node.js :3001) ──────────────────────────────────────────────
+# ── Auth Service (Java/Spring :3001) ──────────────────────────────────────────
 lsof -nti:3001 | xargs kill -9 2>/dev/null || true
-info "Starting Auth Service..."
+info "Starting Auth Service (Maven build may take ~15s)..."
 cd "$ROOT/services/auth-service"
-[ -d node_modules ] || npm install --silent
-npx ts-node src/index.ts < /dev/null > "$LOG_DIR/auth.log" 2>&1 &
-wait_for "Auth Service" "http://localhost:3001/health"
+AUTH_DB_PATH="$ROOT/services/auth-service/auth.db" mvn spring-boot:run -q < /dev/null > "$LOG_DIR/auth.log" 2>&1 &
+wait_for "Auth Service" "http://localhost:3001/health" 60
 
 # ── Account Service (Python :3003) ────────────────────────────────────────────
 lsof -nti:3003 | xargs kill -9 2>/dev/null || true
@@ -83,13 +82,12 @@ cd "$ROOT/services/transaction-service"
 mvn spring-boot:run -q < /dev/null > "$LOG_DIR/transaction.log" 2>&1 &
 wait_for "Transaction Service" "http://localhost:3004/transactions/health" 60
 
-# ── API Gateway (Node.js :8080) ───────────────────────────────────────────────
+# ── API Gateway (Java/Spring :8080) ───────────────────────────────────────────
 lsof -nti:8080 | xargs kill -9 2>/dev/null || true
-info "Starting API Gateway..."
+info "Starting API Gateway (Maven build may take ~15s)..."
 cd "$ROOT/services/api-gateway"
-[ -d node_modules ] || npm install --silent
-npx ts-node src/index.ts < /dev/null > "$LOG_DIR/gateway.log" 2>&1 &
-wait_for "API Gateway" "http://localhost:8080/health"
+mvn spring-boot:run -q < /dev/null > "$LOG_DIR/gateway.log" 2>&1 &
+wait_for "API Gateway" "http://localhost:8080/health" 60
 
 # ── Frontend (Vite :3008) ─────────────────────────────────────────────────────
 pkill -f vite 2>/dev/null || true; sleep 1

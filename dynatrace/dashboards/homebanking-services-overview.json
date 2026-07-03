@@ -1,0 +1,217 @@
+{
+  "name": "Homebanking — Services Overview",
+  "type": "dashboard",
+  "content": {
+    "version": 21,
+    "variables": [],
+    "tiles": {
+      "0": {
+        "type": "markdown",
+        "content": "# Homebanking — Overview\nRED metrics (Rate, Errors, Duration) de los 5 microservicios (`auth-service`, `account-service`, `transaction-service`, `notification-service`, `api-gateway`) + salud de Kubernetes en el namespace `homebanking`."
+      },
+      "1": {
+        "title": "Servicios",
+        "type": "data",
+        "query": "timeseries { requestCount_timeseries = sum(dt.service.request.count, scalar: true) },\n  by: { dt.smartscape.service, dt.service.name },\n  filter: isNotNull(dt.smartscape.service) and in(dt.service.name, {\"auth-service\",\"account-service\",\"transaction-service\",\"notification-service\",\"api-gateway\"})\n\n| lookup [\n\n// p50 (tendencia)\ntimeseries Latencia_Promedio = percentile(dt.service.request.response_time, 50),\n   by: { dt.smartscape.service }, bins: 40\n], sourceField:dt.smartscape.service, lookupField:dt.smartscape.service, fields:{Latencia_Promedio}, executionOrder:leftFirst\n| lookup [\n\n// p50 valor reciente\ntimeseries Latencia = percentile(dt.service.request.response_time, 50),\n   by: { dt.smartscape.service }, from: -10m, to: -2m, interval: 1m\n| fieldsAdd Latencia = arrayLast(arrayRemoveNulls(Latencia))\n], sourceField:dt.smartscape.service, lookupField:dt.smartscape.service, fields:{Latencia}, executionOrder:leftFirst\n| lookup [\n\n// Calls (tendencia)\ntimeseries Calls = sum(dt.service.request.count),\n   by: {dt.smartscape.service }, bins: 40\n], sourceField:dt.smartscape.service, lookupField:dt.smartscape.service, fields:{Calls}, executionOrder:leftFirst\n| lookup [\n\n// Calls valor reciente\ntimeseries Call = sum(dt.service.request.count),\n   by: {dt.smartscape.service }, from: -10m, to: -2m, interval: 1m\n| fieldsAdd Call = arrayLast(arrayRemoveNulls(Call))\n], sourceField:dt.smartscape.service, lookupField:dt.smartscape.service, fields:{Call}, executionOrder:leftFirst\n| lookup [\n  // Error rate (tendencia)\n      timeseries {\n        operand1 = sum(dt.service.request.failure_count),\n        operand2 = sum(dt.service.request.count)\n      }, by: { dt.smartscape.service }, bins: 40\n      | fieldsAdd Errores = operand1[] / operand2[]  * 100\n      | fieldsRemove operand1, operand2\n], sourceField:dt.smartscape.service, lookupField:dt.smartscape.service, fields:{Errores}, executionOrder:leftFirst\n| lookup [\n  // Error rate valor reciente\n      timeseries {\n        operand1 = sum(dt.service.request.failure_count),\n        operand2 = sum(dt.service.request.count)\n      }, by: { dt.smartscape.service }, from: -10m, to: -2m, interval: 1m\n      | fieldsAdd Error_reciente = operand1[] / operand2[]  * 100\n      | fieldsAdd Error_reciente = arrayLast(arrayRemoveNulls(Error_reciente))\n      | fieldsRemove operand1, operand2\n], sourceField:dt.smartscape.service, lookupField:dt.smartscape.service, fields:{Error_reciente}, executionOrder:leftFirst\n\n| fieldsAdd Servicio = coalesce(dt.service.name, dt.smartscape.service)\n| fieldsAdd timeframe = timeframe(from: now()-30m, to: now()), interval = (now()-30m-now())/40\n| fields Servicio, Errores, Error_reciente, Latencia_Promedio, Latencia, Calls, Call, timeframe, interval\n| sort Error_reciente desc",
+        "visualization": "table",
+        "visualizationSettings": {
+          "table": {
+            "hiddenColumns": [["timeframe"], ["interval"]],
+            "hideColumnsForLargeResults": true,
+            "rowDensity": "default",
+            "columnTypeOverrides": [
+              { "fields": ["Errores", "Latencia_Promedio", "Calls"], "value": "sparkline", "id": 1, "disableRemoval": false }
+            ]
+          },
+          "coloring": {
+            "colorRules": [
+              { "value": 1, "comparator": "≥", "field": "Error_reciente", "colorMode": "custom-color", "customColor": { "Default": "var(--dt-colors-charts-threshold-bad-default, #cd3741)" }, "type": "double" },
+              { "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)", "comparator": "≥", "field": "Latencia", "value": 500000, "type": "double", "metadata": { "fields": ["Latencia", "Latencia_Promedio"], "applyTo": "value" } },
+              { "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)", "comparator": "=", "field": "Call", "value": 0, "type": "double" }
+            ]
+          },
+          "autoSelectVisualization": false,
+          "unitsOverrides": [
+            { "identifier": "Errores", "unitCategory": "percentage", "baseUnit": "percent", "displayUnit": null, "decimals": 2, "suffix": "", "delimiter": false },
+            { "identifier": "Error_reciente", "unitCategory": "percentage", "baseUnit": "percent", "displayUnit": null, "decimals": null, "suffix": "", "delimiter": false },
+            { "identifier": "Calls", "unitCategory": "unspecified", "baseUnit": "count", "displayUnit": null, "decimals": null, "suffix": "", "delimiter": false }
+          ]
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } },
+        "timeframe": { "tileTimeframeEnabled": true, "tileTimeframe": { "from": "now()-30m", "to": "now()" } }
+      },
+      "2": {
+        "title": "Latencia",
+        "description": "Percentiles p50/p90/p95/p99 agregados de los 5 servicios homebanking",
+        "type": "data",
+        "query": "timeseries Latency50 = percentile(dt.service.request.response_time,50),\nLatency90 = percentile(dt.service.request.response_time,90),\nLatency95 = percentile(dt.service.request.response_time,95),\nLatency99 = percentile(dt.service.request.response_time,99),\nfilter: in(dt.service.name, {\"auth-service\",\"account-service\",\"transaction-service\",\"notification-service\",\"api-gateway\"})\n| fieldsAdd Latency50, Latency90, Latency95, Latency99",
+        "visualization": "lineChart",
+        "visualizationSettings": {
+          "legend": { "ratio": 11 },
+          "coloring": {
+            "thresholdRules": [
+              { "color": "var(--dt-colors-charts-apdex-good-default, #1c520a)", "label": "Good", "colorMode": "single-color", "mode": "range", "position": "left", "strokeOnly": false, "min": 0, "max": 500000 },
+              { "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)", "label": "Bad", "colorMode": "single-color", "mode": "range", "position": "left", "strokeOnly": true, "min": 500000 }
+            ],
+            "colorRules": [
+              { "comparator": "=", "value": "Latency90", "field": "DT.name", "type": "string", "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-fair-default, #a9780f)" },
+              { "comparator": "=", "value": "Latency95", "field": "DT.name", "type": "string", "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-poor-default, #d56b1a)" },
+              { "comparator": "=", "value": "Latency99", "field": "DT.name", "type": "string", "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)" },
+              { "comparator": "=", "value": "Latency50", "field": "DT.name", "type": "string", "colorMode": "custom-color", "customColor": "#00B38F" }
+            ]
+          },
+          "autoSelectVisualization": false,
+          "unitsOverrides": [],
+          "chartSettings": { "legend": { "position": "bottom" } }
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } },
+        "timeframe": { "tileTimeframeEnabled": true, "tileTimeframe": { "from": "now()-30m", "to": "now()" } }
+      },
+      "3": {
+        "title": "Error Rate %",
+        "type": "data",
+        "query": "timeseries error = sum(dt.service.request.failure_count), total= sum(dt.service.request.count), filter: in(dt.service.name, {\"auth-service\",\"account-service\",\"transaction-service\",\"notification-service\",\"api-gateway\"})\n| fieldsAdd errorRate = error[]/total[] *100\n| fieldsAdd errorRate\n|fieldsRemove error,total",
+        "visualization": "barChart",
+        "visualizationSettings": {
+          "legend": { "ratio": 11 },
+          "coloring": {
+            "thresholdRules": [
+              { "color": "var(--dt-colors-charts-apdex-good-default, #1c520a)", "label": "Good", "colorMode": "single-color", "mode": "range", "position": "left", "strokeOnly": false, "max": 3 },
+              { "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)", "label": "Bad", "colorMode": "single-color", "mode": "range", "position": "left", "strokeOnly": false, "min": 3 }
+            ],
+            "colorRules": [
+              { "comparator": "=", "value": "errorRate", "field": "DT.name", "type": "string", "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)" }
+            ]
+          },
+          "autoSelectVisualization": false,
+          "unitsOverrides": [
+            { "identifier": "errorRate", "unitCategory": "percentage", "baseUnit": "percent", "displayUnit": null, "decimals": null, "suffix": "", "delimiter": false }
+          ],
+          "chartSettings": { "legend": { "position": "bottom" } }
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } },
+        "timeframe": { "tileTimeframeEnabled": true, "tileTimeframe": { "from": "now()-30m", "to": "now()" } }
+      },
+      "4": {
+        "title": "Calls",
+        "type": "data",
+        "query": "timeseries Calls = sum(dt.service.request.count), filter: in(dt.service.name, {\"auth-service\",\"account-service\",\"transaction-service\",\"notification-service\",\"api-gateway\"})\n| fieldsAdd Calls",
+        "visualization": "barChart",
+        "visualizationSettings": {
+          "chartSettings": { "legend": { "position": "bottom" } },
+          "legend": { "ratio": 11 },
+          "coloring": {
+            "thresholdRules": [
+              { "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)", "label": "Low traffic", "colorMode": "single-color", "mode": "range", "position": "left", "strokeOnly": false, "min": 0, "max": 1 }
+            ],
+            "colorRules": [
+              { "comparator": "=", "value": "Calls", "field": "DT.name", "type": "string", "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-excellent-default, #2a7453)" }
+            ]
+          },
+          "autoSelectVisualization": false,
+          "unitsOverrides": [
+            { "identifier": "Calls", "unitCategory": "unspecified", "baseUnit": "count", "displayUnit": null, "decimals": null, "suffix": "", "delimiter": false }
+          ]
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } },
+        "timeframe": { "tileTimeframeEnabled": true, "tileTimeframe": { "from": "now()-30m", "to": "now()" } }
+      },
+      "5": {
+        "type": "markdown",
+        "content": "## Kubernetes — namespace `homebanking`"
+      },
+      "6": {
+        "title": "CPU Usage by Workload",
+        "type": "data",
+        "query": "timeseries cpu = sum(dt.kubernetes.container.cpu_usage), by:{k8s.workload.name}, filter: k8s.namespace.name == \"homebanking\"",
+        "visualization": "lineChart",
+        "visualizationSettings": {
+          "chartSettings": { "xAxisScaling": "analyzedTimeframe", "legend": { "position": "right" } },
+          "autoSelectVisualization": false
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } },
+        "timeframe": { "tileTimeframeEnabled": true, "tileTimeframe": { "from": "now()-30m", "to": "now()" } }
+      },
+      "7": {
+        "title": "Memory Working Set by Workload",
+        "type": "data",
+        "query": "timeseries memory = sum(dt.kubernetes.container.memory_working_set), by:{k8s.workload.name}, filter: k8s.namespace.name == \"homebanking\"",
+        "visualization": "lineChart",
+        "visualizationSettings": {
+          "chartSettings": { "xAxisScaling": "analyzedTimeframe", "legend": { "position": "right" } },
+          "autoSelectVisualization": false,
+          "unitsOverrides": [
+            { "identifier": "memory", "unitCategory": "data", "baseUnit": "byte", "displayUnit": null, "decimals": null, "suffix": "", "delimiter": false }
+          ]
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } },
+        "timeframe": { "tileTimeframeEnabled": true, "tileTimeframe": { "from": "now()-30m", "to": "now()" } }
+      },
+      "8": {
+        "title": "Pod Restarts (namespace homebanking)",
+        "type": "data",
+        "query": "timeseries restarts = sum(dt.kubernetes.container.restarts), by:{k8s.pod.name}, filter: k8s.namespace.name == \"homebanking\"\n| fieldsAdd total_restarts = arraySum(restarts)\n| filter total_restarts > 0\n| fields k8s.pod.name, total_restarts",
+        "visualization": "categoricalBarChart",
+        "visualizationSettings": {
+          "chartSettings": { "legend": { "position": "right" } },
+          "coloring": {
+            "colorRules": [
+              { "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)", "comparator": "≥", "field": "total_restarts", "value": 5, "type": "double" }
+            ]
+          },
+          "autoSelectVisualization": false
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } },
+        "timeframe": { "tileTimeframeEnabled": true, "tileTimeframe": { "from": "now()-30m", "to": "now()" } }
+      },
+      "9": {
+        "title": "OOM Kills (namespace homebanking)",
+        "type": "data",
+        "query": "timeseries oom_kills = sum(dt.kubernetes.container.oom_kills), by:{k8s.pod.name}, filter: k8s.namespace.name == \"homebanking\"\n| fieldsAdd total_oom_kills = arraySum(oom_kills)\n| filter total_oom_kills > 0\n| fields k8s.pod.name, total_oom_kills",
+        "visualization": "table",
+        "visualizationSettings": {
+          "coloring": {
+            "colorRules": [
+              { "colorMode": "single-color", "color": "var(--dt-colors-charts-apdex-unacceptable-default, #cd3741)", "comparator": "≥", "field": "total_oom_kills", "value": 1, "type": "double" }
+            ]
+          },
+          "autoSelectVisualization": false
+        },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } }
+      },
+      "10": {
+        "title": "Active Davis Problems (services + Kubernetes)",
+        "type": "data",
+        "query": "fetch dt.davis.problems\n| filter not(dt.davis.is_duplicate) and event.status == \"ACTIVE\"\n| filter matchesPhrase(smartscape.affected_entity.types, \"K8S_\") or matchesPhrase(smartscape.affected_entity.types, \"SERVICE\")\n| fields display_id, event.name, event.category, event.status",
+        "visualization": "table",
+        "visualizationSettings": { "autoSelectVisualization": false },
+        "querySettings": { "maxResultRecords": 1000, "defaultScanLimitGbytes": 500, "maxResultMegaBytes": 1, "defaultSamplingRatio": 10, "enableSampling": false },
+        "davis": { "enabled": false, "davisVisualization": { "isAvailable": true } }
+      }
+    },
+    "layouts": {
+      "0":  { "x": 0,  "y": 0,  "w": 24, "h": 1 },
+      "1":  { "x": 0,  "y": 1,  "w": 24, "h": 10 },
+      "2":  { "x": 0,  "y": 11, "w": 12, "h": 8 },
+      "3":  { "x": 12, "y": 11, "w": 6,  "h": 8 },
+      "4":  { "x": 18, "y": 11, "w": 6,  "h": 8 },
+      "5":  { "x": 0,  "y": 19, "w": 24, "h": 1 },
+      "6":  { "x": 0,  "y": 20, "w": 12, "h": 8 },
+      "7":  { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "8":  { "x": 0,  "y": 28, "w": 12, "h": 6 },
+      "9":  { "x": 12, "y": 28, "w": 12, "h": 6 },
+      "10": { "x": 0,  "y": 34, "w": 24, "h": 6 }
+    },
+    "importedWithCode": false,
+    "settings": {},
+    "annotations": []
+  }
+}

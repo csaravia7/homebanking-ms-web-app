@@ -1,4 +1,4 @@
-# Auth Service — Node.js / SQLite
+# Auth Service — Java / Spring Boot / SQLite
 # NOTE: SQLite DB is stored in an emptyDir (persists during pod lifetime).
 #       For production durability, migrate auth storage to PostgreSQL.
 apiVersion: apps/v1
@@ -19,8 +19,8 @@ spec:
       labels:
         app: auth-service
       annotations:
-        # OTel Operator: inyecta el SDK de Node.js automáticamente
-        instrumentation.opentelemetry.io/inject-nodejs: "homebanking/homebanking-instrumentation"
+        # OTel Operator: inyecta el agente Java automáticamente
+        instrumentation.opentelemetry.io/inject-java: "homebanking/homebanking-instrumentation"
     spec:
       containers:
       - name: auth-service
@@ -30,35 +30,49 @@ spec:
         env:
         - name: PORT
           value: "3001"
-        - name: NODE_ENV
-          value: "production"
+        - name: AUTH_DB_PATH
+          value: "/app/data/auth.db"
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
               name: jwt-secret
               key: JWT_SECRET
+        - name: OTEL_SERVICE_NAME
+          value: "auth-service"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector:4317"
+        - name: OTEL_LOGS_EXPORTER
+          value: "otlp"
+        - name: OTEL_METRICS_EXPORTER
+          value: "otlp"
+        - name: OTEL_TRACES_EXPORTER
+          value: "otlp"
+        - name: JAVA_OPTS
+          value: "-Xms128m -Xmx384m -XX:+UseContainerSupport"
         volumeMounts:
         - name: sqlite-data
           mountPath: /app/data
         resources:
           requests:
-            cpu: "100m"
-            memory: "128Mi"
+            cpu: "150m"
+            memory: "256Mi"
           limits:
-            cpu: "500m"
+            cpu: "750m"
             memory: "512Mi"
         readinessProbe:
           httpGet:
             path: /health
             port: 3001
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 40
+          periodSeconds: 15
+          failureThreshold: 5
         livenessProbe:
           httpGet:
             path: /health
             port: 3001
-          initialDelaySeconds: 20
+          initialDelaySeconds: 60
           periodSeconds: 30
+          failureThreshold: 3
       volumes:
       - name: sqlite-data
         emptyDir: {}

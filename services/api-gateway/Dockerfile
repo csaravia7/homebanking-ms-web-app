@@ -1,20 +1,21 @@
-FROM node:18-alpine AS builder
+# ── Build stage ─────────────────────────────────────────────────────────────
+FROM eclipse-temurin:17-jdk-alpine AS builder
 
+RUN apk add --no-cache maven
 WORKDIR /app
 
-COPY package*.json ./
-# npm install (not ci) so missing transitive types are resolved cleanly
-RUN npm install
+# Download dependencies first (layer cache)
+COPY pom.xml .
+RUN mvn dependency:go-offline -B -q
 
-COPY . .
-RUN npm run build
+COPY src ./src
+RUN mvn clean package -DskipTests -q
 
-# ── Runtime image ────────────────────────────────────────────────────────────
-FROM node:18-alpine
+# ── Runtime stage (JRE only — smaller image) ──────────────────────────────
+FROM eclipse-temurin:17-jre-alpine
+
 WORKDIR /app
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist        ./dist
-COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/target/api-gateway-1.0.0.jar app.jar
 
 EXPOSE 8080
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

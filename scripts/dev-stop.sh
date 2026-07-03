@@ -29,12 +29,13 @@ stop_port "Account Service"      3003
 stop_port "Transaction Service"  3004
 stop_port "Notification Service" 3005
 
-# Kill any remaining vite/ts-node/mvn processes for this project
-pkill -f "vite.*homebanking"           2>/dev/null || true
-pkill -f "ts-node.*homebanking"        2>/dev/null || true
+# Kill any remaining vite/mvn processes for this project
+pkill -f "vite.*homebanking"             2>/dev/null || true
+pkill -f "AuthServiceApplication"        2>/dev/null || true
+pkill -f "ApiGatewayApplication"         2>/dev/null || true
 pkill -f "TransactionServiceApplication" 2>/dev/null || true
-pkill -f "uvicorn.*account"            2>/dev/null || true
-pkill -f "uvicorn.*notification"       2>/dev/null || true
+pkill -f "uvicorn.*account"              2>/dev/null || true
+pkill -f "uvicorn.*notification"         2>/dev/null || true
 
 echo ""
 ok "All services stopped"
