@@ -36,7 +36,7 @@ spec:
           service:
             name: api-gateway
             port:
-              number: 80
+              number: 8080
       # Health endpoint
       - path: /health
         pathType: Exact
@@ -44,7 +44,7 @@ spec:
           service:
             name: api-gateway
             port:
-              number: 80
+              number: 8080
       # Todo lo demás → web-frontend SPA
       - path: /
         pathType: Prefix

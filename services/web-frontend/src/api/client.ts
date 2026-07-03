@@ -1,6 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+// En producción (K8s): baseURL vacío → rutas relativas → nginx hace proxy_pass a api-gateway
+// En desarrollo local: Vite proxy redirige /api → http://localhost:8080
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 class ApiClient {
   private client: AxiosInstance;
