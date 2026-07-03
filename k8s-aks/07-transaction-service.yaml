@@ -48,8 +48,10 @@ spec:
           value: "update"
         - name: OTEL_SERVICE_NAME
           value: "transaction-service"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://otel-collector:4317"
+        # OTEL_EXPORTER_OTLP_ENDPOINT no se define acá: lo inyecta el Instrumentation
+        # CR (13-otel-instrumentation.yaml) apuntando a :4318 con el protocolo default
+        # del agente Java (http/protobuf). Fijarlo acá en :4317 sin también fijar
+        # OTEL_EXPORTER_OTLP_PROTOCOL=grpc rompía el envío (mismatch protocolo/puerto).
         - name: OTEL_LOGS_EXPORTER
           value: "otlp"
         - name: OTEL_METRICS_EXPORTER

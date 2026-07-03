@@ -27,12 +27,17 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homebanking
 data:
-  # OTel Collector interno (K8s DNS: otel-collector.homebanking.svc.cluster.local)
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
-  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  # NOTA: OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_EXPORTER_OTLP_PROTOCOL NO se definen
+  # acá a propósito. La única fuente de verdad para endpoint+protocolo es el
+  # Instrumentation CR (13-otel-instrumentation.yaml, puerto 4318 / http-protobuf,
+  # el default de los SDKs de Java y Python). Definirlos acá en :4317/grpc además
+  # del CR generaba pares endpoint/protocolo inconsistentes según qué servicio los
+  # heredaba de dónde (algunos terminaban con grpc apuntando al puerto http, u
+  # http/protobuf apuntando al puerto grpc) y las señales se perdían en silencio.
   OTEL_SDK_DISABLED: "false"
   OTEL_TRACES_EXPORTER: "otlp"
   OTEL_METRICS_EXPORTER: "otlp"
   OTEL_LOGS_EXPORTER: "otlp"
-  # Propaga contexto W3C (compatible con Dynatrace)
+  # Propaga contexto W3C (compatible con Dynatrace) — redundante con el
+  # Instrumentation CR pero no conflictivo (mismo valor en ambos lados).
   OTEL_PROPAGATORS: "tracecontext,baggage"

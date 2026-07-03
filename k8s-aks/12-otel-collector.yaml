@@ -140,12 +140,16 @@ data:
             - 'IsMatch(metric.name, ".*") and attributes["le"] == nil and metric.type == METRIC_DATA_TYPE_EXPONENTIAL_HISTOGRAM'
 
       # Filtra health-check spans
+      # NOTA: transaction-service expone su healthcheck en "/transactions/health"
+      # (no "/health" como los demás servicios) — sin esta regla, sus probes de
+      # readiness/liveness (cada 15-30s) quedaban sin filtrar en las trazas.
       filter/health:
         error_mode: ignore
         traces:
           span:
             - 'attributes["http.target"] == "/health"'
             - 'attributes["http.target"] == "/healthz"'
+            - 'attributes["http.target"] == "/transactions/health"'
 
     exporters:
       otlphttp/dynatrace:
