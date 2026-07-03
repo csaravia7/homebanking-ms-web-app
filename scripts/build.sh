@@ -51,6 +51,7 @@ SERVICES=(
   "transaction-service:services/transaction-service"
   "api-gateway:services/api-gateway"
   "web-frontend:services/web-frontend"
+  "load-generator:services/load-generator"
   "nginx:nginx"
 )
 

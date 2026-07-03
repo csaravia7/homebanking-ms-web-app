@@ -1,0 +1,65 @@
+# Load Generator — Playwright / Chromium headless
+# Genera tráfico realista sobre el frontend y la API simulando usuarios Chrome.
+#
+# Para activar:   kubectl scale deployment/load-generator -n homebanking --replicas=1
+# Para detener:   kubectl scale deployment/load-generator -n homebanking --replicas=0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: homebanking
+  labels:
+    app: load-generator
+    app.kubernetes.io/part-of: homebanking
+spec:
+  # Arranca en 0 por defecto — activa manualmente cuando quieras generar carga
+  replicas: 0
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      # Chromium necesita /dev/shm grande; evitar OOM en el renderer
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Mi
+      containers:
+      - name: load-generator
+        image: ${DOCKER_REGISTRY}/homebanking-load-generator:${IMAGE_TAG}
+        imagePullPolicy: Always
+        env:
+        # URL interna del frontend dentro del cluster
+        - name: FRONTEND_URL
+          value: "http://web-frontend"
+        # Usuarios virtuales concurrentes por pod
+        - name: CONCURRENT_USERS
+          value: "2"
+        - name: THINK_TIME_MIN
+          value: "2.0"
+        - name: THINK_TIME_MAX
+          value: "5.0"
+        - name: LOOP_FOREVER
+          value: "true"
+        - name: HEADLESS
+          value: "true"
+        - name: ACTION_TIMEOUT_MS
+          value: "20000"
+        - name: NAV_TIMEOUT_MS
+          value: "30000"
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            # Chromium necesita al menos 512Mi; 2 usuarios concurrentes ~1Gi
+            memory: "1Gi"
+        # No expone puertos — solo genera tráfico saliente
