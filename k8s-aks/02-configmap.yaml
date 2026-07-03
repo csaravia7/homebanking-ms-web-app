@@ -12,8 +12,7 @@ data:
   TRANSACTION_SERVICE_URL:  "http://transaction-service:3004"
   NOTIFICATION_SERVICE_URL: "http://notification-service:3005"
 
-  # PostgreSQL connection
-  DATABASE_URL: "postgresql+psycopg://homebank:$(POSTGRES_PASSWORD)@postgres:5432/homebanking_db"
+  # PostgreSQL — la password se inyecta como env var en cada servicio que la necesite
   SPRING_DATASOURCE_URL:  "jdbc:postgresql://postgres:5432/homebanking_db"
 
   # RabbitMQ

@@ -1,18 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Dynatrace OpenTelemetry Collector
 #
-#  Antes de aplicar, configura tus credenciales de Dynatrace:
+#  Antes de aplicar, configura las credenciales (o usa deploy-k8s.sh):
 #    kubectl -n homebanking create secret generic dynatrace-credentials \
 #      --from-literal=DYNATRACE_ENVIRONMENT_ID=<tu-env-id> \
 #      --from-literal=DYNATRACE_API_TOKEN=<tu-api-token>
 #
-#  El API Token necesita los scopes:
-#    - metrics.ingest
-#    - logs.ingest
-#    - openTelemetryTrace.ingest
-#
-#  Endpoint resultante:
-#    https://<DYNATRACE_ENVIRONMENT_ID>.live.dynatrace.com/api/v2/otlp
+#  Scopes requeridos en el API Token:
+#    openTelemetryTrace.ingest · metrics.ingest · logs.ingest
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Secret
@@ -24,7 +19,7 @@ metadata:
     app.kubernetes.io/part-of: homebanking
 type: Opaque
 stringData:
-  # ⚠ Reemplazar con valores reales antes de desplegar
+  # ⚠ Reemplazar con valores reales — el deploy-k8s.sh lo hace automáticamente
   DYNATRACE_ENVIRONMENT_ID: "CHANGE_ME"
   DYNATRACE_API_TOKEN: "CHANGE_ME"
 ---
@@ -42,9 +37,10 @@ data:
       otlp:
         protocols:
           grpc:
-            endpoint: 0.0.0.0:4317
+            # ✅ BP: bind al Pod IP via Downward API (evita CWE-1327)
+            endpoint: ${env:MY_POD_IP}:4317
           http:
-            endpoint: 0.0.0.0:4318
+            endpoint: ${env:MY_POD_IP}:4318
 
     processors:
       batch:
@@ -57,7 +53,6 @@ data:
         limit_mib: 400
         spike_limit_mib: 100
 
-      # Agrega atributos comunes a toda la telemetría
       resource:
         attributes:
           - key: service.namespace
@@ -70,10 +65,20 @@ data:
             value: azure
             action: upsert
 
+      # ✅ BP: filtrar health-checks para no saturar Dynatrace
+      filter/health:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.target"] == "/health"'
+            - 'attributes["http.target"] == "/healthz"'
+
     exporters:
-      # ── Dynatrace via OTLP HTTP (trazas + métricas + logs) ──────────────────
+      # ✅ BP: OTLP HTTP con compresión gzip, timeout y retry
       otlphttp/dynatrace:
         endpoint: "https://${DYNATRACE_ENVIRONMENT_ID}.live.dynatrace.com/api/v2/otlp"
+        compression: gzip
+        timeout: 30s
         headers:
           Authorization: "Api-Token ${DYNATRACE_API_TOKEN}"
         retry_on_failure:
@@ -84,29 +89,24 @@ data:
         sending_queue:
           enabled: true
           num_consumers: 4
-          queue_size: 100
-
-      # ── Debug (desactivar en producción) ─────────────────────────────────────
-      debug:
-        verbosity: basic
+          queue_size: 800
 
     extensions:
       health_check:
-        endpoint: 0.0.0.0:13133
+        # ✅ BP: bind al Pod IP via Downward API
+        endpoint: ${env:MY_POD_IP}:13133
 
     service:
       extensions: [health_check]
       pipelines:
         traces:
           receivers:  [otlp]
-          processors: [memory_limiter, resource, batch]
+          processors: [memory_limiter, filter/health, resource, batch]
           exporters:  [otlphttp/dynatrace]
-
         metrics:
           receivers:  [otlp]
           processors: [memory_limiter, resource, batch]
           exporters:  [otlphttp/dynatrace]
-
         logs:
           receivers:  [otlp]
           processors: [memory_limiter, resource, batch]
@@ -130,6 +130,13 @@ spec:
       labels:
         app: otel-collector
     spec:
+      # ✅ BP: non-root a nivel pod + seccomp
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: otel-collector
         image: otel/opentelemetry-collector-contrib:0.102.0
@@ -146,7 +153,11 @@ spec:
           containerPort: 13133
           protocol: TCP
         env:
-        # Las variables se expanden en el config YAML del collector
+        # ✅ BP: Pod IP via Downward API
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
         - name: DYNATRACE_ENVIRONMENT_ID
           valueFrom:
             secretKeyRef:
@@ -160,6 +171,9 @@ spec:
         volumeMounts:
         - name: otel-config
           mountPath: /conf
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
         resources:
           requests:
             cpu: "100m"
@@ -167,6 +181,12 @@ spec:
           limits:
             cpu: "500m"
             memory: "512Mi"
+        # ✅ BP: contenedor sin privilegios
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         readinessProbe:
           httpGet:
             path: /
@@ -183,6 +203,8 @@ spec:
       - name: otel-config
         configMap:
           name: otel-collector-config
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
