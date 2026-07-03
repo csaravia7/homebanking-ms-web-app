@@ -17,6 +17,9 @@ spec:
     metadata:
       labels:
         app: api-gateway
+      annotations:
+        # OTel Operator: inyecta el SDK de Node.js automáticamente
+        instrumentation.opentelemetry.io/inject-nodejs: "homebanking/homebanking-instrumentation"
     spec:
       containers:
       - name: api-gateway

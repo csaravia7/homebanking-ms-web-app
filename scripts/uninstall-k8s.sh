@@ -12,6 +12,7 @@ set -euo pipefail
 NAMESPACE="homebanking"
 DELETE_PVC="${DELETE_PVC:-false}"
 DELETE_INGRESS="${DELETE_INGRESS:-false}"
+DELETE_OPERATOR="${DELETE_OPERATOR:-false}"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✓  $1${NC}"; }
@@ -30,8 +31,9 @@ echo ""
 
 # ── Confirmar antes de proceder ───────────────────────────────────────────────
 warn "Esta operación eliminará TODOS los recursos del namespace '${NAMESPACE}'."
-[[ "$DELETE_PVC"    == "true" ]] && warn "DELETE_PVC=true  → los datos de PostgreSQL serán BORRADOS permanentemente."
+[[ "$DELETE_PVC"     == "true" ]] && warn "DELETE_PVC=true  → los datos de PostgreSQL serán BORRADOS permanentemente."
 [[ "$DELETE_INGRESS" == "true" ]] && warn "DELETE_INGRESS=true → el ingress-nginx controller será eliminado."
+[[ "$DELETE_OPERATOR" == "true" ]] && warn "DELETE_OPERATOR=true → OTel Operator y cert-manager serán eliminados."
 echo ""
 read -rp "¿Confirmar desinstalación? (escribe 'si' para continuar): " CONFIRM
 [[ "$CONFIRM" != "si" ]] && { echo "Operación cancelada."; exit 0; }
@@ -96,6 +98,17 @@ if [[ "$DELETE_INGRESS" == "true" ]]; then
   kubectl delete namespace ingress-nginx --ignore-not-found=true
 fi
 
+# ── OTel Operator y cert-manager (opcional) ───────────────────────────────────
+if [[ "$DELETE_OPERATOR" == "true" ]]; then
+  warn "Eliminando OTel Operator..."
+  helm uninstall opentelemetry-operator -n opentelemetry-operator 2>/dev/null && ok "OTel Operator eliminado" || warn "OTel Operator no encontrado"
+  kubectl delete namespace opentelemetry-operator --ignore-not-found=true
+
+  warn "Eliminando cert-manager..."
+  kubectl delete -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml \
+    --ignore-not-found=true 2>/dev/null && ok "cert-manager eliminado" || warn "cert-manager no encontrado"
+fi
+
 # ── Resumen ───────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
@@ -104,8 +117,7 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo "  Recursos K8s eliminados del namespace: ${NAMESPACE}"
 [[ "$DELETE_PVC"     == "true" ]] && echo "  Datos de PostgreSQL: ELIMINADOS"    || echo "  Datos de PostgreSQL: conservados (PVCs intactos)"
-[[ "$DELETE_INGRESS" == "true" ]] && echo "  Ingress controller:   ELIMINADO"    || echo "  Ingress controller:   conservado"
-echo ""
+[[ "$DELETE_INGRESS" == "true" ]] && echo "  Ingress controller:   ELIMINADO"    || echo "  Ingress controller:   conservado"  [[ "$DELETE_OPERATOR" == "true" ]] && echo "  OTel Operator:        ELIMINADO"   || echo "  OTel Operator:        conservado"echo ""
 echo "Para redesplegar:"
 echo "  export DOCKER_REGISTRY=<registry> IMAGE_TAG=<tag>"
 echo "  ./scripts/deploy-k8s.sh"

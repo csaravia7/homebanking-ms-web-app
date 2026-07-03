@@ -16,6 +16,9 @@ spec:
     metadata:
       labels:
         app: account-service
+      annotations:
+        # OTel Operator: inyecta el SDK de Python automáticamente
+        instrumentation.opentelemetry.io/inject-python: "homebanking/homebanking-instrumentation"
     spec:
       containers:
       - name: account-service

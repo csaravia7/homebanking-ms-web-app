@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  OTel Operator — Instrumentation Resource
+#
+#  Aplica este manifest ANTES de que los pods de los servicios arranquen.
+#  El Operator inyecta automáticamente el SDK vía init-container cuando
+#  detecta la anotación en el pod.
+#
+#  Prerequisitos (ejecutar una vez por cluster):
+#    # 1. cert-manager
+#    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+#
+#    # 2. OTel Operator
+#    helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+#    helm upgrade --install opentelemetry-operator \
+#      open-telemetry/opentelemetry-operator \
+#      --namespace opentelemetry-operator --create-namespace \
+#      --set admissionWebhooks.certManager.enabled=true --wait
+#
+#  (el deploy-k8s.sh hace esto automáticamente)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: homebanking-instrumentation
+  namespace: homebanking
+  labels:
+    app.kubernetes.io/part-of: homebanking
+spec:
+  # Endpoint HTTP (4318) — soportado por Java, Python y Node.js (con override)
+  exporter:
+    endpoint: http://otel-collector:4318
+
+  propagators:
+    - tracecontext
+    - baggage
+
+  sampler:
+    type: parentbased_traceidratio
+    argument: "1"
+
+  resource:
+    resourceAttributes:
+      service.namespace: homebanking
+      deployment.environment: production
+      cloud.provider: azure
+
+  # ── Java (Spring Boot) ──────────────────────────────────────────────────────
+  # El Operator inyecta el agente Java automáticamente vía init-container.
+  # El agente usa HTTP/protobuf con endpoint 4318 por defecto.
+  java:
+    env:
+      - name: OTEL_LOGS_EXPORTER
+        value: otlp
+      - name: OTEL_METRICS_EXPORTER
+        value: otlp
+      - name: OTEL_TRACES_EXPORTER
+        value: otlp
+
+  # ── Node.js ─────────────────────────────────────────────────────────────────
+  # Por defecto Node.js usa gRPC (4317). Forzamos HTTP/protobuf para
+  # usar el mismo endpoint 4318 que el resto.
+  nodejs:
+    env:
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: http/protobuf
+      - name: OTEL_NODE_DISABLED_INSTRUMENTATIONS
+        value: "fs"   # demasiado ruidoso
+      - name: OTEL_LOGS_EXPORTER
+        value: otlp
+
+  # ── Python (FastAPI) ────────────────────────────────────────────────────────
+  # Python usa HTTP/protobuf con 4318 por defecto.
+  python:
+    env:
+      - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
+        value: "true"
+      - name: OTEL_LOGS_EXPORTER
+        value: otlp

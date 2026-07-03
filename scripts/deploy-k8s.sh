@@ -68,13 +68,61 @@ kubectl -n "$NAMESPACE" create secret generic dynatrace-credentials \
 ok "Secret dynatrace-credentials creado/actualizado"
 echo ""
 
+# ── OTel Operator (prerequisito para auto-instrumentación) ────────────────────
+info "Verificando OTel Operator..."
+
+# 1. cert-manager (requerido por el Operator)
+if ! kubectl get namespace cert-manager >/dev/null 2>&1; then
+  info "Instalando cert-manager..."
+  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+  info "Esperando que cert-manager esté listo..."
+  kubectl wait --for=condition=Available deployment -n cert-manager --all --timeout=120s
+  ok "cert-manager listo"
+else
+  ok "cert-manager ya instalado"
+fi
+
+# 2. OTel Operator
+if ! kubectl get deployment opentelemetry-operator-controller-manager -n opentelemetry-operator >/dev/null 2>&1; then
+  info "Instalando OTel Operator..."
+  helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
+  helm repo update open-telemetry
+  helm upgrade --install opentelemetry-operator \
+    open-telemetry/opentelemetry-operator \
+    --namespace opentelemetry-operator --create-namespace \
+    --set admissionWebhooks.certManager.enabled=true \
+    --wait --timeout=180s
+  ok "OTel Operator instalado"
+else
+  ok "OTel Operator ya instalado"
+fi
+echo ""
+
 # ── Aplicar manifests en orden ────────────────────────────────────────────────
-for manifest in "$MANIFESTS_DIR"/*.yaml; do
+# IMPORTANTE: aplicar el Instrumentation CRD ANTES que los Deployments de
+# los servicios para que el Operator pueda inyectar el SDK al crear los pods.
+
+info "Aplicando infraestructura base (namespace, secrets, configmaps)..."
+for manifest in "$MANIFESTS_DIR"/0[0-4]-*.yaml; do
   filename="$(basename "$manifest")"
-
-  # 00-namespace ya fue aplicado al crear el secret de Dynatrace
   [[ "$filename" == "00-namespace.yaml" ]] && { ok "$filename (ya aplicado)"; continue; }
+  info "Aplicando $filename ..."
+  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG}' < "$manifest" | kubectl apply -f -
+  ok "$filename aplicado"
+done
 
+info "Aplicando OTel Collector e Instrumentation CRD (antes de los servicios)..."
+for manifest in "$MANIFESTS_DIR"/1[2-3]-*.yaml; do
+  filename="$(basename "$manifest")"
+  info "Aplicando $filename ..."
+  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG}' < "$manifest" | kubectl apply -f -
+  ok "$filename aplicado"
+done
+
+info "Aplicando servicios (el Operator inyectará el SDK automáticamente)..."
+for manifest in "$MANIFESTS_DIR"/0[5-9]-*.yaml "$MANIFESTS_DIR"/1[01]-*.yaml; do
+  [[ -f "$manifest" ]] || continue
+  filename="$(basename "$manifest")"
   info "Aplicando $filename ..."
   envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG}' < "$manifest" | kubectl apply -f -
   ok "$filename aplicado"
@@ -100,6 +148,17 @@ for dep in "${DEPLOYMENTS[@]}"; do
   kubectl rollout status statefulset/"$dep" -n "$NAMESPACE" --timeout=180s 2>/dev/null || \
     echo "  (skipped – may still be initialising)"
 done
+
+# ── Restart para garantizar inyección del OTel SDK ────────────────────────────
+echo ""
+info "Reiniciando deployments para activar inyección del OTel Operator..."
+kubectl rollout restart deployment/auth-service \
+                         deployment/account-service \
+                         deployment/transaction-service \
+                         deployment/notification-service \
+                         deployment/api-gateway \
+                         -n "$NAMESPACE" 2>/dev/null || true
+ok "Restart solicitado — el Operator inyectará el SDK en los nuevos pods"
 
 # ── Obtener IPs públicas ──────────────────────────────────────────────────────
 echo ""

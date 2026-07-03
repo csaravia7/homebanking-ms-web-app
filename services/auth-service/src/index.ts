@@ -55,6 +55,7 @@ function initializeDatabase() {
       const insertStmt = db.prepare(
         'INSERT INTO users (email, password, first_name, last_name) VALUES (?, ?, ?, ?)'
       );
+      insertStmt.run('test@example.com', hash, 'Test', 'User');
       insertStmt.run('alice@example.com', hash, 'Alice', 'Johnson');
       insertStmt.run('bob@example.com', hash, 'Bob', 'Smith');
       console.log('Demo users created');
