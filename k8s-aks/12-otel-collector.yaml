@@ -130,14 +130,6 @@ data:
           receivers:  [otlp]
           processors: [memory_limiter, resource, batch]
           exporters:  [otlphttp/dynatrace]
-        metrics:
-          receivers:  [otlp]
-          processors: [memory_limiter, cumulativetodelta, filter/dynatrace_compat, resource, batch]
-          exporters:  [otlphttp/dynatrace]
-        logs:
-          receivers:  [otlp]
-          processors: [memory_limiter, resource, batch]
-          exporters:  [otlphttp/dynatrace]
 ---
 apiVersion: apps/v1
 kind: Deployment
