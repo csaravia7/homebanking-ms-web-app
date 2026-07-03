@@ -19,9 +19,9 @@ metadata:
     app.kubernetes.io/part-of: homebanking
 type: Opaque
 stringData:
-  # ⚠ Reemplazar con valores reales — el deploy-k8s.sh lo hace automáticamente
-  DYNATRACE_ENVIRONMENT_ID: "CHANGE_ME"
-  DYNATRACE_API_TOKEN: "CHANGE_ME"
+  # Valores inyectados por deploy-k8s.sh via envsubst
+  DYNATRACE_ENVIRONMENT_ID: "${DYNATRACE_ENVIRONMENT_ID}"
+  DYNATRACE_API_TOKEN: "${DYNATRACE_API_TOKEN}"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -65,6 +65,11 @@ data:
             value: azure
             action: upsert
 
+      # Convierte CUMULATIVE_SUM → DELTA: requerido por Dynatrace.
+      # Sin este processor, métricas como system.cpu.time son rechazadas
+      # con error UNSUPPORTED_METRIC_TYPE_MONOTONIC_CUMULATIVE_SUM.
+      cumulativetodelta: {}
+
       # ✅ BP: filtrar health-checks para no saturar Dynatrace
       filter/health:
         error_mode: ignore
@@ -105,7 +110,7 @@ data:
           exporters:  [otlphttp/dynatrace]
         metrics:
           receivers:  [otlp]
-          processors: [memory_limiter, resource, batch]
+          processors: [memory_limiter, cumulativetodelta, resource, batch]
           exporters:  [otlphttp/dynatrace]
         logs:
           receivers:  [otlp]

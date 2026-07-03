@@ -30,7 +30,7 @@ fail() { echo -e "${RED}✗  $1${NC}" >&2; exit 1; }
 command -v kubectl  >/dev/null 2>&1 || fail "kubectl no encontrado"
 command -v envsubst >/dev/null 2>&1 || fail "envsubst no encontrado (brew install gettext)"
 
-export DOCKER_REGISTRY IMAGE_TAG
+export DOCKER_REGISTRY IMAGE_TAG DYNATRACE_ENVIRONMENT_ID DYNATRACE_API_TOKEN
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
@@ -107,7 +107,7 @@ for manifest in "$MANIFESTS_DIR"/0[0-4]-*.yaml; do
   filename="$(basename "$manifest")"
   [[ "$filename" == "00-namespace.yaml" ]] && { ok "$filename (ya aplicado)"; continue; }
   info "Aplicando $filename ..."
-  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG}' < "$manifest" | kubectl apply -f -
+  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG} ${DYNATRACE_ENVIRONMENT_ID} ${DYNATRACE_API_TOKEN}' < "$manifest" | kubectl apply -f -
   ok "$filename aplicado"
 done
 
@@ -115,7 +115,7 @@ info "Aplicando OTel Collector e Instrumentation CRD (antes de los servicios)...
 for manifest in "$MANIFESTS_DIR"/1[2-3]-*.yaml; do
   filename="$(basename "$manifest")"
   info "Aplicando $filename ..."
-  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG}' < "$manifest" | kubectl apply -f -
+  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG} ${DYNATRACE_ENVIRONMENT_ID} ${DYNATRACE_API_TOKEN}' < "$manifest" | kubectl apply -f -
   ok "$filename aplicado"
 done
 
@@ -124,7 +124,7 @@ for manifest in "$MANIFESTS_DIR"/0[5-9]-*.yaml "$MANIFESTS_DIR"/1[01]-*.yaml; do
   [[ -f "$manifest" ]] || continue
   filename="$(basename "$manifest")"
   info "Aplicando $filename ..."
-  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG}' < "$manifest" | kubectl apply -f -
+  envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG} ${DYNATRACE_ENVIRONMENT_ID} ${DYNATRACE_API_TOKEN}' < "$manifest" | kubectl apply -f -
   ok "$filename aplicado"
 done
 
