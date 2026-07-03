@@ -50,10 +50,14 @@ metadata:
   labels:
     app: web-frontend
     app.kubernetes.io/part-of: homebanking
+  annotations:
+    # AKS: provisiona una Azure Public IP automáticamente
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/healthz"
 spec:
   selector:
     app: web-frontend
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
-  type: ClusterIP
+  type: LoadBalancer
