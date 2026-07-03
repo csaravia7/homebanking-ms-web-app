@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homebanking
+  labels:
+    name: homebanking
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homebanking-config
+  namespace: homebanking
+data:
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"
+  ENVIRONMENT: "production"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_LOGS_EXPORTER: "otlp"
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: homebanking
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    
+    events {
+      worker_connections 1024;
+    }
+    
+    http {
+      upstream api_gateway {
+        server api-gateway:8080;
+      }
+      
+      upstream auth_service {
+        server auth-service:3001;
+      }
+      
+      upstream account_service {
+        server account-service:3003;
+      }
+      
+      upstream transaction_service {
+        server transaction-service:3004;
+      }
+      
+      upstream notification_service {
+        server notification-service:3005;
+      }
+      
+      server {
+        listen 80;
+        server_name _;
+        
+        location / {
+          proxy_pass http://api_gateway;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+        
+        location /api/auth/ {
+          proxy_pass http://auth_service/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+        
+        location /api/accounts/ {
+          proxy_pass http://account_service/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+        
+        location /api/transactions/ {
+          proxy_pass http://transaction_service/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+        
+        location /api/notifications/ {
+          proxy_pass http://notification_service/;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: homebanking
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    
+    processors:
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+        spike_limit_mib: 128
+    
+    exporters:
+      jaeger:
+        endpoint: "jaeger:14250"
+        tls:
+          insecure: true
+      logging:
+        loglevel: debug
+    
+    extensions:
+      health_check:
+        endpoint: :13133
+    
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [jaeger, logging]
