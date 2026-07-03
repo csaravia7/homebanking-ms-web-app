@@ -65,10 +65,22 @@ data:
             value: azure
             action: upsert
 
-      # Convierte CUMULATIVE_SUM → DELTA: requerido por Dynatrace.
-      # Sin este processor, métricas como system.cpu.time son rechazadas
-      # con error UNSUPPORTED_METRIC_TYPE_MONOTONIC_CUMULATIVE_SUM.
-      cumulativetodelta: {}
+      # Convierte CUMULATIVE → DELTA para Sum e Histogram.
+      # Sin esto Dynatrace rechaza con UNSUPPORTED_METRIC_TYPE_*_CUMULATIVE_*.
+      # include regexp ".*" fuerza la conversión en TODOS los tipos de métricas.
+      cumulativetodelta:
+        include:
+          metrics:
+            - ".*"
+          match_type: regexp
+
+      # Filtra tipos de métricas que Dynatrace no soporta aunque sean delta
+      # (ej: Exponential Histograms — Dynatrace solo acepta explicit-bounds)
+      filter/dynatrace_compat:
+        error_mode: ignore
+        metrics:
+          datapoint:
+            - 'IsMatch(metric.name, ".*") and attributes["le"] == nil and metric.type == METRIC_DATA_TYPE_EXPONENTIAL_HISTOGRAM'
 
       # ✅ BP: filtrar health-checks para no saturar Dynatrace
       filter/health:
@@ -108,9 +120,19 @@ data:
           receivers:  [otlp]
           processors: [memory_limiter, filter/health, resource, batch]
           exporters:  [otlphttp/dynatrace]
+
         metrics:
           receivers:  [otlp]
-          processors: [memory_limiter, cumulativetodelta, resource, batch]
+          processors: [memory_limiter, cumulativetodelta, filter/dynatrace_compat, resource, batch]
+          exporters:  [otlphttp/dynatrace]
+
+        logs:
+          receivers:  [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters:  [otlphttp/dynatrace]
+        metrics:
+          receivers:  [otlp]
+          processors: [memory_limiter, cumulativetodelta, filter/dynatrace_compat, resource, batch]
           exporters:  [otlphttp/dynatrace]
         logs:
           receivers:  [otlp]
