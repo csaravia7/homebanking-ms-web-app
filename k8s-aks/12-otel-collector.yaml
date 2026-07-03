@@ -1,0 +1,211 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Dynatrace OpenTelemetry Collector
+#
+#  Antes de aplicar, configura tus credenciales de Dynatrace:
+#    kubectl -n homebanking create secret generic dynatrace-credentials \
+#      --from-literal=DYNATRACE_ENVIRONMENT_ID=<tu-env-id> \
+#      --from-literal=DYNATRACE_API_TOKEN=<tu-api-token>
+#
+#  El API Token necesita los scopes:
+#    - metrics.ingest
+#    - logs.ingest
+#    - openTelemetryTrace.ingest
+#
+#  Endpoint resultante:
+#    https://<DYNATRACE_ENVIRONMENT_ID>.live.dynatrace.com/api/v2/otlp
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dynatrace-credentials
+  namespace: homebanking
+  labels:
+    app: otel-collector
+    app.kubernetes.io/part-of: homebanking
+type: Opaque
+stringData:
+  # ⚠ Reemplazar con valores reales antes de desplegar
+  DYNATRACE_ENVIRONMENT_ID: "CHANGE_ME"
+  DYNATRACE_API_TOKEN: "CHANGE_ME"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: homebanking
+  labels:
+    app: otel-collector
+    app.kubernetes.io/part-of: homebanking
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 512
+        send_batch_max_size: 1024
+
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 400
+        spike_limit_mib: 100
+
+      # Agrega atributos comunes a toda la telemetría
+      resource:
+        attributes:
+          - key: service.namespace
+            value: homebanking
+            action: upsert
+          - key: deployment.environment
+            value: production
+            action: upsert
+          - key: cloud.provider
+            value: azure
+            action: upsert
+
+    exporters:
+      # ── Dynatrace via OTLP HTTP (trazas + métricas + logs) ──────────────────
+      otlphttp/dynatrace:
+        endpoint: "https://${DYNATRACE_ENVIRONMENT_ID}.live.dynatrace.com/api/v2/otlp"
+        headers:
+          Authorization: "Api-Token ${DYNATRACE_API_TOKEN}"
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+        sending_queue:
+          enabled: true
+          num_consumers: 4
+          queue_size: 100
+
+      # ── Debug (desactivar en producción) ─────────────────────────────────────
+      debug:
+        verbosity: basic
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers:  [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters:  [otlphttp/dynatrace]
+
+        metrics:
+          receivers:  [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters:  [otlphttp/dynatrace]
+
+        logs:
+          receivers:  [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters:  [otlphttp/dynatrace]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: homebanking
+  labels:
+    app: otel-collector
+    app.kubernetes.io/part-of: homebanking
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+      - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:0.102.0
+        args:
+          - "--config=/conf/otel-collector-config.yaml"
+        ports:
+        - name: otlp-grpc
+          containerPort: 4317
+          protocol: TCP
+        - name: otlp-http
+          containerPort: 4318
+          protocol: TCP
+        - name: health
+          containerPort: 13133
+          protocol: TCP
+        env:
+        # Las variables se expanden en el config YAML del collector
+        - name: DYNATRACE_ENVIRONMENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: dynatrace-credentials
+              key: DYNATRACE_ENVIRONMENT_ID
+        - name: DYNATRACE_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: dynatrace-credentials
+              key: DYNATRACE_API_TOKEN
+        volumeMounts:
+        - name: otel-config
+          mountPath: /conf
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 20
+          periodSeconds: 30
+      volumes:
+      - name: otel-config
+        configMap:
+          name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: homebanking
+  labels:
+    app: otel-collector
+    app.kubernetes.io/part-of: homebanking
+spec:
+  selector:
+    app: otel-collector
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+    protocol: TCP
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+    protocol: TCP
+  - name: health
+    port: 13133
+    targetPort: 13133
+    protocol: TCP
+  type: ClusterIP

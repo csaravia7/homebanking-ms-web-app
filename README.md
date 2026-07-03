@@ -162,3 +162,11 @@ Copy `.env.example` → `.env` and adjust:
 | `ACCOUNT_SERVICE_URL` | `http://localhost:3003` | Internal URL |
 | `TRANSACTION_SERVICE_URL` | `http://localhost:3004` | Internal URL |
 | `NOTIFICATION_SERVICE_URL` | `http://localhost:3005` | Internal URL |
+
+
+---
+
+
+kubectl -n homebanking create secret generic dynatrace-credentials \
+  --from-literal=DYNATRACE_ENVIRONMENT_ID=abc12345 \
+  --from-literal=DYNATRACE_API_TOKEN=dt0c01.XXXXX

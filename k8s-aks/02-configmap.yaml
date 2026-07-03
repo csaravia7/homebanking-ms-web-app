@@ -28,7 +28,12 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homebanking
 data:
+  # OTel Collector interno (K8s DNS: otel-collector.homebanking.svc.cluster.local)
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
   OTEL_SDK_DISABLED: "false"
   OTEL_TRACES_EXPORTER: "otlp"
   OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_LOGS_EXPORTER: "otlp"
+  # Propaga contexto W3C (compatible con Dynatrace)
+  OTEL_PROPAGATORS: "tracecontext,baggage"

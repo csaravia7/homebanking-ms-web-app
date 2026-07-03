@@ -16,45 +16,51 @@ receivers:
 
 processors:
   batch:
-    timeout: 10s
-    send_batch_size: 1024
+    timeout: 5s
+    send_batch_size: 512
   
   memory_limiter:
     check_interval: 1s
     limit_mib: 512
     spike_limit_mib: 128
   
-  attributes:
-    actions:
+  resource:
+    attributes:
       - key: service.namespace
         value: homebanking
-        action: insert
-      - key: environment
+        action: upsert
+      - key: deployment.environment
         value: development
-        action: insert
+        action: upsert
 
 exporters:
+  # ── Dynatrace via OTLP HTTP (trazas + métricas + logs) ──────────────────
+  # Requiere: export DYNATRACE_ENVIRONMENT_ID=xxx DYNATRACE_API_TOKEN=yyy
+  otlphttp/dynatrace:
+    endpoint: "https://${DYNATRACE_ENVIRONMENT_ID}.live.dynatrace.com/api/v2/otlp"
+    headers:
+      Authorization: "Api-Token ${DYNATRACE_API_TOKEN}"
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+
+  # ── Jaeger local (desarrollo) ───────────────────────────────────
   jaeger:
     endpoint: "jaeger:14250"
     tls:
       insecure: true
-  
+
+  # ── Prometheus local (desarrollo) ──────────────────────────────
   prometheus:
     endpoint: "0.0.0.0:8888"
-  
-  otlp:
-    client:
-      endpoint: localhost:4317
-      tls:
-        insecure: true
-  
-  logging:
-    loglevel: debug
+
+  debug:
+    verbosity: basic
 
 extensions:
   health_check:
-    endpoint: :13133
-  
+    endpoint: 0.0.0.0:13133
   pprof:
     endpoint: :1777
 
@@ -62,16 +68,16 @@ service:
   extensions: [health_check, pprof]
   pipelines:
     traces:
-      receivers: [otlp]
-      processors: [memory_limiter, batch, attributes]
-      exporters: [jaeger, logging]
+      receivers:  [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:  [otlphttp/dynatrace, jaeger]
     
     metrics:
-      receivers: [otlp, prometheus]
-      processors: [memory_limiter, batch, attributes]
-      exporters: [prometheus, logging]
+      receivers:  [otlp, prometheus]
+      processors: [memory_limiter, resource, batch]
+      exporters:  [otlphttp/dynatrace, prometheus]
     
     logs:
-      receivers: [otlp]
-      processors: [memory_limiter, batch, attributes]
-      exporters: [logging]
+      receivers:  [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters:  [otlphttp/dynatrace, debug]

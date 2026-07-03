@@ -17,21 +17,19 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homebanking
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    # CORS handled at API Gateway level
     nginx.ingress.kubernetes.io/enable-cors: "false"
-    # Rate limiting (adjust as needed)
     nginx.ingress.kubernetes.io/limit-rps: "100"
 spec:
+  ingressClassName: nginx
   rules:
-  # ── Replace with your real domain or use the AKS public IP ─────────────────
-  - host: homebanking.example.com   # ← change this
+  # ── Reemplaza con tu dominio real o la IP pública del ingress de AKS ───────
+  - host: homebanking.example.com   # ← cambiar por tu dominio
     http:
       paths:
-      # API traffic → api-gateway
+      # Tráfico API → api-gateway
       - path: /api
         pathType: Prefix
         backend:
@@ -47,7 +45,7 @@ spec:
             name: api-gateway
             port:
               number: 8080
-      # All other traffic → web-frontend SPA
+      # Todo lo demás → web-frontend SPA
       - path: /
         pathType: Prefix
         backend:
@@ -55,7 +53,7 @@ spec:
             name: web-frontend
             port:
               number: 80
-  # ── TLS (uncomment after creating the certificate secret) ──────────────────
+  # ── TLS (descomentar después de crear el secret del certificado) ───────────
   # tls:
   # - hosts:
   #   - homebanking.example.com
