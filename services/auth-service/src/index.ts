@@ -6,12 +6,21 @@ import helmet from 'helmet';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import { logger } from './logger';
 
 dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT || 3001;
 const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught exception:', error.stack || error.message);
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error('Unhandled promise rejection:', reason);
+});
 
 // Database setup
 const dbPath = path.join(__dirname, '../auth.db');
@@ -44,7 +53,7 @@ function initializeDatabase() {
       
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
-    console.log('Database initialized successfully');
+    logger.info('Database initialized successfully');
 
     // Insert demo users if they don't exist
     const countStmt = db.prepare('SELECT COUNT(*) as count FROM users');
@@ -58,10 +67,10 @@ function initializeDatabase() {
       insertStmt.run('test@example.com', hash, 'Test', 'User');
       insertStmt.run('alice@example.com', hash, 'Alice', 'Johnson');
       insertStmt.run('bob@example.com', hash, 'Bob', 'Smith');
-      console.log('Demo users created');
+      logger.info('Demo users created');
     }
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    logger.error('Failed to initialize database:', error);
   }
 }
 
@@ -82,18 +91,20 @@ app.post('/register', async (req: Request, res: Response) => {
       );
       const result = insertStmt.run(email, hashedPassword, firstName || null, lastName || null);
 
+      logger.info(`User registered: ${email}`);
       res.status(201).json({
         message: 'User created successfully',
         user: { id: result.lastInsertRowid, email }
       });
     } catch (err: any) {
       if (err.message.includes('UNIQUE')) {
+        logger.warn(`Registration rejected, email already exists: ${email}`);
         return res.status(409).json({ error: 'Email already exists' });
       }
       throw err;
     }
   } catch (error: any) {
-    console.error('Registration error:', error);
+    logger.error('Registration error:', error.stack || error.message);
     res.status(500).json({ error: 'Registration failed' });
   }
 });
@@ -111,12 +122,14 @@ app.post('/login', async (req: Request, res: Response) => {
     const user = selectStmt.get(email) as any;
 
     if (!user) {
+      logger.warn(`Login failed, unknown email: ${email}`);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
+      logger.warn(`Login failed, wrong password for: ${email}`);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
@@ -126,6 +139,7 @@ app.post('/login', async (req: Request, res: Response) => {
       { expiresIn: '24h' }
     );
 
+    logger.info(`Login successful: ${email}`);
     res.json({
       message: 'Login successful',
       token,
@@ -136,8 +150,8 @@ app.post('/login', async (req: Request, res: Response) => {
         lastName: user.last_name
       }
     });
-  } catch (error) {
-    console.error('Login error:', error);
+  } catch (error: any) {
+    logger.error('Login error:', error.stack || error.message);
     res.status(500).json({ error: 'Login failed' });
   }
 });
@@ -154,14 +168,15 @@ app.post('/verify', (req: Request, res: Response) => {
     const decoded = jwt.verify(token, jwtSecret);
 
     res.json({ valid: true, user: decoded });
-  } catch (error) {
+  } catch (error: any) {
+    logger.warn('Token verification failed:', error.message);
     res.status(401).json({ error: 'Invalid token' });
   }
 });
 
-// Error handling
+// Centralized error handling for errors passed via next(err) or thrown synchronously in middleware
 app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error(err);
+  logger.error(`Unhandled error on ${req.method} ${req.originalUrl}: ${err.stack || err.message}`);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
@@ -169,15 +184,20 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 initializeDatabase();
 
 const server = app.listen(port, () => {
-  console.log(`Auth Service listening on port ${port}`);
+  logger.info(`Auth Service listening on port ${port}`);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  console.log('Shutting down Auth Service...');
-  db.close();
-  server.close();
-  process.exit(0);
+  logger.info('Shutting down Auth Service...');
+  try {
+    db.close();
+    server.close();
+  } catch (error: any) {
+    logger.error('Error during shutdown:', error.stack || error.message);
+  } finally {
+    process.exit(0);
+  }
 });
 
 export default app;

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -12,6 +13,7 @@ import random
 from enum import Enum
 
 from sqlalchemy import create_engine, Column, String, Float, ForeignKey
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
 # Configuration
@@ -22,9 +24,13 @@ DATABASE_URL = getenv(
     "postgresql+psycopg://homebank:secure123@localhost:5432/homebanking_db"
 )
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup logging (log4j-style pattern: timestamp - level - logger - message)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03d %(levelname)-5s [%(name)s] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(SERVICE_NAME_VALUE)
 
 # ── Database setup ────────────────────────────────────────────────────────────
 engine = create_engine(DATABASE_URL)
@@ -50,6 +56,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Centralized exception handling ─────────────────────────────────────────────
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    logger.error("Database error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=500, content={"error": "Database error"})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 # Enums
 class AccountType(str, Enum):
@@ -232,8 +250,8 @@ def get_user_id_from_request(request: Request, query_userId: Optional[str] = Non
                 uid = decoded.get("userId") or decoded.get("id") or decoded.get("sub")
                 if uid:
                     return str(uid)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to decode userId from Authorization token: %s", e)
     return "default-user"
 
 # Health check

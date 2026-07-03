@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -11,12 +12,23 @@ import json
 SERVICE_NAME_VALUE = getenv("OTEL_SERVICE_NAME", "notification-service")
 PORT = int(getenv("PORT", 3005))
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup logging (log4j-style pattern: timestamp - level - logger - message)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03d %(levelname)-5s [%(name)s] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(SERVICE_NAME_VALUE)
 
 # FastAPI app
 app = FastAPI(title=SERVICE_NAME_VALUE, version="1.0.0")
+
+
+# ── Centralized exception handling ─────────────────────────────────────────────
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 # Models
 class NotificationBase(BaseModel):
@@ -55,8 +67,8 @@ def get_user_id_from_request(request: Request, query_user_id: Optional[int] = No
                 uid = decoded.get("userId") or decoded.get("id") or decoded.get("sub")
                 if uid:
                     return int(uid)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to decode userId from Authorization token: %s", e)
     return 0
 
 # Health check
@@ -95,18 +107,22 @@ async def list_notifications(request: Request, user_id: Optional[int] = None, re
 @app.put("/notifications/{notification_id}/read")
 async def mark_as_read(notification_id: int):
     if notification_id not in notifications_db:
+        logger.warning("Notification %s not found (mark_as_read)", notification_id)
         return {"error": "Notification not found"}, 404
-    
+
     notifications_db[notification_id]["read"] = True
+    logger.info("Notification %s marked as read", notification_id)
     return {"message": "Notification marked as read"}
 
 # Delete notification
 @app.delete("/notifications/{notification_id}")
 async def delete_notification(notification_id: int):
     if notification_id not in notifications_db:
+        logger.warning("Notification %s not found (delete)", notification_id)
         return {"error": "Notification not found"}, 404
-    
+
     del notifications_db[notification_id]
+    logger.info("Notification %s deleted", notification_id)
     return {"message": "Notification deleted"}
 
 if __name__ == "__main__":

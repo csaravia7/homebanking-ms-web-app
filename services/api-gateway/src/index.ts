@@ -4,12 +4,30 @@ import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { trace } from '@opentelemetry/api';
+import { logger } from './logger';
 
 dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT || 8080;
 const tracer = trace.getTracer('api-gateway');
+
+// Logs the upstream/network error for a proxied request and forwards a safe response to the client
+function handleProxyError(error: any, req: Request, res: Response): void {
+  logger.error(
+    `Proxy call failed for ${req.method} ${req.originalUrl}: ${error.message}`,
+    error.response?.data ? { upstreamStatus: error.response.status, upstreamData: error.response.data } : ''
+  );
+  res.status(error.response?.status || 500).json({ error: error.message });
+}
+
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught exception:', error.stack || error.message);
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error('Unhandled promise rejection:', reason);
+});
 
 // Middleware
 app.use(helmet());
@@ -34,7 +52,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     const response = await axios.post(`${authServiceUrl}/login`, req.body);
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -46,7 +64,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     const response = await axios.post(`${authServiceUrl}/register`, req.body);
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -61,7 +79,7 @@ app.post('/api/accounts', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -75,7 +93,7 @@ app.post('/api/accounts/with-card', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -89,7 +107,7 @@ app.get('/api/accounts/:accountId', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -104,7 +122,7 @@ app.get('/api/accounts', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -118,7 +136,7 @@ app.put('/api/accounts/:accountId', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -132,7 +150,7 @@ app.delete('/api/accounts/:accountId', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -146,7 +164,7 @@ app.get('/api/accounts/:accountId/cards', async (req: Request, res: Response) =>
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -161,7 +179,7 @@ app.post('/api/cards', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -176,7 +194,7 @@ app.get('/api/cards', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -190,7 +208,7 @@ app.get('/api/cards/:cardId', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -204,7 +222,7 @@ app.put('/api/cards/:cardId', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -218,7 +236,7 @@ app.patch('/api/cards/:cardId/block', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -232,7 +250,7 @@ app.patch('/api/cards/:cardId/activate', async (req: Request, res: Response) => 
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -246,7 +264,7 @@ app.delete('/api/cards/:cardId', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -295,13 +313,13 @@ app.post('/api/transactions', async (req: Request, res: Response) => {
         }
       } catch (balanceError) {
         // Balance update failure is non-fatal — transaction already recorded
-        console.error('Balance update failed:', (balanceError as any)?.message);
+        logger.error(`Balance update failed for accountId=${tx.accountId}:`, (balanceError as any)?.message);
       }
     }
 
     res.json(tx);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -316,7 +334,7 @@ app.get('/api/transactions', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -330,7 +348,7 @@ app.get('/api/transactions/:transactionId', async (req: Request, res: Response) 
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -345,7 +363,7 @@ app.post('/api/notifications', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -360,7 +378,7 @@ app.get('/api/notifications', async (req: Request, res: Response) => {
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -374,7 +392,7 @@ app.get('/api/notifications/:notificationId', async (req: Request, res: Response
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -388,7 +406,7 @@ app.put('/api/notifications/:notificationId/read', async (req: Request, res: Res
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
@@ -402,18 +420,18 @@ app.delete('/api/notifications/:notificationId', async (req: Request, res: Respo
     });
     res.json(response.data);
   } catch (error: any) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    handleProxyError(error, req, res);
   } finally {
     span.end();
   }
 });
 
-// Error handling
+// Centralized error handling for errors passed via next(err) or thrown synchronously in middleware
 app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error(err);
+  logger.error(`Unhandled error on ${req.method} ${req.originalUrl}: ${err.stack || err.message}`);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
 app.listen(port, () => {
-  console.log(`API Gateway listening on port ${port}`);
+  logger.info(`API Gateway listening on port ${port}`);
 });

@@ -3,6 +3,8 @@ package com.homebanking.transaction.controller;
 import com.homebanking.transaction.entity.Transaction;
 import com.homebanking.transaction.dto.TransactionDTO;
 import com.homebanking.transaction.repository.TransactionRepository;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,37 +17,45 @@ import java.util.stream.Collectors;
 @RequestMapping("/transactions")
 @CrossOrigin(origins = "*")
 public class TransactionController {
-    
+
+    private static final Logger logger = LogManager.getLogger(TransactionController.class);
+
     @Autowired
     private TransactionRepository transactionRepository;
-    
+
     @GetMapping("/health")
     public ResponseEntity<?> health() {
         return ResponseEntity.ok().body("{\"status\": \"OK\", \"service\": \"transaction-service\"}");
     }
-    
+
     @PostMapping
     public ResponseEntity<?> createTransaction(@RequestBody Transaction transaction) {
         try {
             // Validate required fields
             if (transaction.getAccountId() == null || transaction.getAccountId().isBlank()) {
+                logger.warn("createTransaction rejected: accountId is required");
                 return ResponseEntity.badRequest().body("{\"error\": \"accountId is required\"}");
             }
             if (transaction.getAmount() == null || transaction.getAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                logger.warn("createTransaction rejected: amount must be greater than 0 (accountId={})", transaction.getAccountId());
                 return ResponseEntity.badRequest().body("{\"error\": \"amount must be greater than 0\"}");
             }
             if (transaction.getType() == null || transaction.getType().isBlank()) {
+                logger.warn("createTransaction rejected: type is required (accountId={})", transaction.getAccountId());
                 return ResponseEntity.badRequest().body("{\"error\": \"type is required\"}");
             }
             transaction.setStatus("COMPLETED");
             Transaction saved = transactionRepository.save(transaction);
+            logger.info("Transaction {} created for accountId={} amount={} type={}",
+                    saved.getId(), saved.getAccountId(), saved.getAmount(), saved.getType());
             return ResponseEntity.status(HttpStatus.CREATED).body(convertToDTO(saved));
         } catch (Exception e) {
+            logger.error("Failed to create transaction for accountId={}", transaction.getAccountId(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("{\"error\": \"" + e.getMessage() + "\"}");
+                    .body("{\"error\": \"Unable to process transaction\"}");
         }
     }
-    
+
     @GetMapping
     public ResponseEntity<?> listTransactions(
             @RequestParam(required = false) String accountId,
@@ -68,23 +78,28 @@ public class TransactionController {
             }
             return ResponseEntity.ok(transactions.stream().map(this::convertToDTO).collect(Collectors.toList()));
         } catch (Exception e) {
+            logger.error("Failed to list transactions (accountId={}, accountIds={})", accountId, accountIds, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("{\"error\": \"" + e.getMessage() + "\"}");
+                    .body("{\"error\": \"Unable to list transactions\"}");
         }
     }
-    
+
     @GetMapping("/{transactionId}")
     public ResponseEntity<?> getTransaction(@PathVariable Long transactionId) {
         try {
             return transactionRepository.findById(transactionId)
                     .map(t -> ResponseEntity.ok(convertToDTO(t)))
-                    .orElse(ResponseEntity.notFound().build());
+                    .orElseGet(() -> {
+                        logger.warn("Transaction {} not found", transactionId);
+                        return ResponseEntity.notFound().build();
+                    });
         } catch (Exception e) {
+            logger.error("Failed to fetch transaction {}", transactionId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("{\"error\": \"" + e.getMessage() + "\"}");
+                    .body("{\"error\": \"Unable to fetch transaction\"}");
         }
     }
-    
+
     private TransactionDTO convertToDTO(Transaction transaction) {
         return new TransactionDTO(
                 transaction.getId(),
