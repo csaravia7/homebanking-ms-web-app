@@ -326,13 +326,13 @@ async def main():
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
+                "--disable-dev-shm-usage",   # usa /dev/shm del pod (montado como emptyDir)
                 "--disable-gpu",
                 "--disable-software-rasterizer",
                 "--disable-background-timer-throttling",
                 "--disable-backgrounding-occluded-windows",
                 "--disable-renderer-backgrounding",
-                "--single-process",              # reduce memoria en K8s
+                # --single-process ELIMINADO: causa crash WTF::Initialize en Blink
             ],
         )
         log.info("✓ Chromium iniciado")

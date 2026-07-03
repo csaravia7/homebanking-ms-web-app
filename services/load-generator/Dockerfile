@@ -8,7 +8,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Asegurar que el browser de Chromium está instalado
 RUN playwright install chromium --with-deps
 
 COPY app.py .

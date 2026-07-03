@@ -170,3 +170,24 @@ Copy `.env.example` → `.env` and adjust:
 kubectl -n homebanking create secret generic dynatrace-credentials \
   --from-literal=DYNATRACE_ENVIRONMENT_ID=abc12345 \
   --from-literal=DYNATRACE_API_TOKEN=dt0c01.XXXXX
+
+---
+
+## Load Generator
+
+Simula tráfico real de usuarios usando Playwright / Chromium headless.
+El deployment se despliega con `replicas: 0` por defecto — actívalo manualmente:
+
+```bash
+# Activar generación de carga
+kubectl scale deployment/load-generator -n homebanking --replicas=1
+
+# Verificar que el pod arrancó
+kubectl get pod -n homebanking -l app=load-generator -w
+
+# Ver los logs en tiempo real
+kubectl logs -n homebanking -l app=load-generator -f
+
+# Detener
+kubectl scale deployment/load-generator -n homebanking --replicas=0
+```
