@@ -20,9 +20,10 @@ IMAGE_TAG="${IMAGE_TAG:-latest}"
 MANIFESTS_DIR="$(cd "$(dirname "$0")/../k8s-aks" && pwd)"
 NAMESPACE="homebanking"
 
-GREEN='\033[0;32m'; CYAN='\033[0;36m'; RED='\033[0;31m'; NC='\033[0m'
+GREEN='\033[0;32m'; CYAN='\033[0;36m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✓  $1${NC}"; }
 info() { echo -e "${CYAN}▶  $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠  $1${NC}"; }
 fail() { echo -e "${RED}✗  $1${NC}" >&2; exit 1; }
 
 [[ -z "$DOCKER_REGISTRY" ]] && fail "DOCKER_REGISTRY is not set. Export tu usuario de Docker Hub."

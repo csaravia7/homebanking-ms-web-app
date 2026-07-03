@@ -20,6 +20,7 @@ spec:
       containers:
       - name: web-frontend
         image: ${DOCKER_REGISTRY}/homebanking-web-frontend:${IMAGE_TAG}
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         resources:
