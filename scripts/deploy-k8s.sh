@@ -121,7 +121,7 @@ for manifest in "$MANIFESTS_DIR"/12*.yaml "$MANIFESTS_DIR"/13*.yaml; do
 done
 
 info "Aplicando servicios (el Operator inyectará el SDK automáticamente)..."
-for manifest in "$MANIFESTS_DIR"/0[5-9]-*.yaml "$MANIFESTS_DIR"/1[01]-*.yaml; do
+for manifest in "$MANIFESTS_DIR"/0[5-9]-*.yaml "$MANIFESTS_DIR"/1[01]-*.yaml "$MANIFESTS_DIR"/14*.yaml; do
   [[ -f "$manifest" ]] || continue
   filename="$(basename "$manifest")"
   info "Aplicando $filename ..."
