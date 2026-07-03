@@ -112,7 +112,8 @@ for manifest in "$MANIFESTS_DIR"/0[0-4]-*.yaml; do
 done
 
 info "Aplicando OTel Collector e Instrumentation CRD (antes de los servicios)..."
-for manifest in "$MANIFESTS_DIR"/1[2-3]-*.yaml; do
+for manifest in "$MANIFESTS_DIR"/12*.yaml "$MANIFESTS_DIR"/13*.yaml; do
+  [[ -f "$manifest" ]] || continue
   filename="$(basename "$manifest")"
   info "Aplicando $filename ..."
   envsubst '${DOCKER_REGISTRY} ${IMAGE_TAG} ${DYNATRACE_ENVIRONMENT_ID} ${DYNATRACE_API_TOKEN}' < "$manifest" | kubectl apply -f -
